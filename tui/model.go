@@ -46,9 +46,10 @@ type connectedMsg struct {
 
 // ReplayResultMsg is sent when a replay call completes.
 type ReplayResultMsg struct {
-	Result *replay.Result
-	Method string
-	Err    error
+	Result     *replay.Result
+	Method     string
+	RequestJSON string
+	Err        error
 }
 
 // EditorFinishedMsg is sent when the $EDITOR exits.
@@ -75,11 +76,12 @@ type Model struct {
 }
 
 type replayResultView struct {
-	method     string
-	result     *replay.Result
-	err        error
-	scroll     int // scroll offset for viewing long content
-	totalLines int // set during render for scroll bounds
+	method      string
+	requestJSON string
+	result      *replay.Result
+	err         error
+	scroll      int // scroll offset for viewing long content
+	totalLines  int // set during render for scroll bounds
 }
 
 // NewModel creates a new TUI model that connects to the given target address.
@@ -116,9 +118,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.replaying = false
 		m.mode = viewReplay
 		m.replayResult = &replayResultView{
-			method: msg.Method,
-			result: msg.Result,
-			err:    msg.Err,
+			method:      msg.Method,
+			requestJSON: msg.RequestJSON,
+			result:      msg.Result,
+			err:         msg.Err,
 		}
 	case EditorFinishedMsg:
 		if msg.Err != nil {
@@ -405,6 +408,12 @@ func (m Model) renderReplayResult() string {
 		b.WriteString(r.Duration.String())
 		b.WriteString("\n")
 
+		if m.replayResult.requestJSON != "" {
+			b.WriteString(labelStyle.Render("Request: "))
+			b.WriteString(prettyJSON(m.replayResult.requestJSON, m.width-6, jsonWrap))
+			b.WriteString("\n")
+		}
+
 		if r.ResponseJSON != "" {
 			b.WriteString(labelStyle.Render("Response: "))
 			b.WriteString(prettyJSON(r.ResponseJSON, m.width-6, jsonWrap))
@@ -463,7 +472,7 @@ func (m Model) doReplay(ev *scopev1.CallEvent, payloadJSON string) tea.Cmd {
 	return func() tea.Msg {
 		client, err := replay.NewClient(appTarget)
 		if err != nil {
-			return ReplayResultMsg{Method: method, Err: err}
+			return ReplayResultMsg{Method: method, RequestJSON: payloadJSON, Err: err}
 		}
 		defer client.Close()
 
@@ -472,7 +481,7 @@ func (m Model) doReplay(ev *scopev1.CallEvent, payloadJSON string) tea.Cmd {
 			PayloadJSON: payloadJSON,
 			Metadata:    md,
 		})
-		return ReplayResultMsg{Result: result, Method: method, Err: err}
+		return ReplayResultMsg{Result: result, Method: method, RequestJSON: payloadJSON, Err: err}
 	}
 }
 
