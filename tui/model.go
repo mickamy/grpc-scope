@@ -158,6 +158,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "down", "j":
 		return m.navigateDown(), nil
 	case "r":
+		if m.mode == viewReplay && m.appTarget != "" && !m.replaying && m.replayResult != nil {
+			m.replaying = true
+			ev := m.events[m.cursor]
+			return m, m.doReplay(ev, m.replayResult.requestJSON)
+		}
 		if m.canReplay() {
 			m.replaying = true
 			ev := m.events[m.cursor]
@@ -453,7 +458,7 @@ func (m Model) renderReplayResult() string {
 	for range pad {
 		visible = append(visible, "")
 	}
-	visible = append(visible, helpStyle.Render("q: back  j/k/↑/↓: scroll"))
+	visible = append(visible, helpStyle.Render("q: back  j/k/↑/↓: scroll  r: resend"))
 
 	return borderStyle.Width(m.width - 2).Render(strings.Join(visible, "\n"))
 }
