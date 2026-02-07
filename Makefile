@@ -36,7 +36,7 @@ clean:
 	rm -rf $(BUILD_DIR)
 
 test:
-	go test ./...
+	go test -race ./...
 
 lint:
 	@command -v golangci-lint >/dev/null 2>&1 || { \
