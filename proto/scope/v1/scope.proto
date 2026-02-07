@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package scope.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+message CallEvent {
+  string id = 1;
+  string method = 2;
+  google.protobuf.Timestamp start_time = 3;
+  google.protobuf.Duration duration = 4;
+  int32 status_code = 5;
+  string status_message = 6;
+  map<string, MetadataValues> request_metadata = 7;
+  map<string, MetadataValues> response_headers = 8;
+  map<string, MetadataValues> response_trailers = 9;
+  string request_payload = 10;
+  string response_payload = 11;
+}
+
+message MetadataValues {
+  repeated string values = 1;
+}
+
+message WatchRequest {}
+
+message WatchResponse {
+  CallEvent event = 1;
+}
+
+service ScopeService {
+  rpc Watch(WatchRequest) returns (stream WatchResponse);
+}
