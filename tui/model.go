@@ -286,7 +286,10 @@ func (m Model) renderDetail() string {
 	b.WriteString("\n")
 
 	b.WriteString(labelStyle.Render("Status: "))
-	b.WriteString(fmt.Sprintf("%s (%s)", domain.StatusCode(ev.GetStatusCode()).String(), ev.GetStatusMessage()))
+	b.WriteString(domain.StatusCode(ev.GetStatusCode()).String())
+	if msg := ev.GetStatusMessage(); msg != "" {
+		b.WriteString(fmt.Sprintf(" (%s)", msg))
+	}
 	b.WriteString("\n")
 
 	if ev.GetDuration() != nil {
