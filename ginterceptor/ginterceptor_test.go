@@ -1,4 +1,4 @@
-package interceptor_test
+package ginterceptor_test
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"time"
 
 	scopev1 "github.com/mickamy/grpc-scope/gen/scope/v1"
-	"github.com/mickamy/grpc-scope/interceptor"
+	"github.com/mickamy/grpc-scope/ginterceptor"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -23,7 +23,7 @@ func (t *testService) Watch(_ *scopev1.WatchRequest, _ grpc.ServerStreamingServe
 	return status.Error(codes.Unimplemented, "not implemented")
 }
 
-func setupTest(t *testing.T) (scopev1.ScopeServiceClient, scopev1.ScopeServiceClient, *interceptor.Scope) {
+func setupTest(t *testing.T) (scopev1.ScopeServiceClient, scopev1.ScopeServiceClient, *ginterceptor.Scope) {
 	t.Helper()
 
 	// Find a free port for the scope server
@@ -34,7 +34,7 @@ func setupTest(t *testing.T) (scopev1.ScopeServiceClient, scopev1.ScopeServiceCl
 	scopePort := scopeLis.Addr().(*net.TCPAddr).Port
 	_ = scopeLis.Close()
 
-	scope, err := interceptor.New(interceptor.WithPort(scopePort))
+	scope, err := ginterceptor.New(ginterceptor.WithPort(scopePort))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func setupTest(t *testing.T) (scopev1.ScopeServiceClient, scopev1.ScopeServiceCl
 	return appClient, scopeClient, scope
 }
 
-func waitForSubscriber(t *testing.T, scope *interceptor.Scope, wantCount int) {
+func waitForSubscriber(t *testing.T, scope *ginterceptor.Scope, wantCount int) {
 	t.Helper()
 
 	deadline := time.After(3 * time.Second)
