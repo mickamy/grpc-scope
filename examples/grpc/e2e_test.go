@@ -13,9 +13,17 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	greeterv1 "github.com/mickamy/grpc-scope/examples/grpc/gen/greeter/v1"
+	todov1 "github.com/mickamy/grpc-scope/examples/grpc/gen/todo/v1"
 )
 
-func setupE2E(t *testing.T) (greeterv1.GreeterServiceClient, scopev1.ScopeServiceClient, *ginterceptor.Scope) {
+type e2eClients struct {
+	greeter greeterv1.GreeterServiceClient
+	todo    todov1.TodoServiceClient
+	scope   scopev1.ScopeServiceClient
+	scopeS  *ginterceptor.Scope
+}
+
+func setupE2E(t *testing.T) e2eClients {
 	t.Helper()
 
 	// Find a free port for the scope server
@@ -38,6 +46,7 @@ func setupE2E(t *testing.T) (greeterv1.GreeterServiceClient, scopev1.ScopeServic
 		grpc.StreamInterceptor(scope.StreamInterceptor()),
 	)
 	greeterv1.RegisterGreeterServiceServer(srv, &greeterServer{})
+	todov1.RegisterTodoServiceServer(srv, &todoServer{todos: make(map[string]*todov1.Todo)})
 
 	appLis, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
@@ -61,6 +70,7 @@ func setupE2E(t *testing.T) (greeterv1.GreeterServiceClient, scopev1.ScopeServic
 	}
 	t.Cleanup(func() { _ = appConn.Close() })
 	appClient := greeterv1.NewGreeterServiceClient(appConn)
+	todoClient := todov1.NewTodoServiceClient(appConn)
 
 	// Client to the scope server (to Watch events)
 	scopeConn, err := grpc.NewClient(
@@ -73,7 +83,12 @@ func setupE2E(t *testing.T) (greeterv1.GreeterServiceClient, scopev1.ScopeServic
 	t.Cleanup(func() { _ = scopeConn.Close() })
 	scopeClient := scopev1.NewScopeServiceClient(scopeConn)
 
-	return appClient, scopeClient, scope
+	return e2eClients{
+		greeter: appClient,
+		todo:    todoClient,
+		scope:   scopeClient,
+		scopeS:  scope,
+	}
 }
 
 func waitForSubscriber(t *testing.T, scope *ginterceptor.Scope, wantCount int) {
@@ -94,18 +109,18 @@ func TestE2E_SayHello(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	appClient, scopeClient, scope := setupE2E(t)
+	c := setupE2E(t)
 
 	// Start watching scope events
-	stream, err := scopeClient.Watch(ctx, &scopev1.WatchRequest{})
+	stream, err := c.scope.Watch(ctx, &scopev1.WatchRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	waitForSubscriber(t, scope, 1)
+	waitForSubscriber(t, c.scopeS, 1)
 
 	// Call SayHello
-	resp, err := appClient.SayHello(ctx, &greeterv1.SayHelloRequest{Name: "World"})
+	resp, err := c.greeter.SayHello(ctx, &greeterv1.SayHelloRequest{Name: "World"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,19 +166,19 @@ func TestE2E_SayHello_LongPayload(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	appClient, scopeClient, scope := setupE2E(t)
+	c := setupE2E(t)
 
-	stream, err := scopeClient.Watch(ctx, &scopev1.WatchRequest{})
+	stream, err := c.scope.Watch(ctx, &scopev1.WatchRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	waitForSubscriber(t, scope, 1)
+	waitForSubscriber(t, c.scopeS, 1)
 
 	// Build a long name (~1000 chars) to produce a large request/response payload.
 	longName := strings.Repeat("abcdefghij", 100)
 
-	resp, err := appClient.SayHello(ctx, &greeterv1.SayHelloRequest{Name: longName})
+	resp, err := c.greeter.SayHello(ctx, &greeterv1.SayHelloRequest{Name: longName})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,5 +201,98 @@ func TestE2E_SayHello_LongPayload(t *testing.T) {
 
 	if !strings.Contains(ev.GetResponsePayload(), longName) {
 		t.Error("expected response payload to contain the long name")
+	}
+}
+
+func TestE2E_CreateTodo(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	c := setupE2E(t)
+
+	stream, err := c.scope.Watch(ctx, &scopev1.WatchRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	waitForSubscriber(t, c.scopeS, 1)
+
+	// Create a todo
+	todo, err := c.todo.CreateTodo(ctx, &todov1.CreateTodoRequest{
+		Title:       "Buy milk",
+		Description: "Go to the store",
+		Priority:    todov1.Priority_PRIORITY_HIGH,
+		Tags:        []string{"shopping", "errands"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if todo.GetTitle() != "Buy milk" {
+		t.Errorf("got title %q, want %q", todo.GetTitle(), "Buy milk")
+	}
+	if todo.GetPriority() != todov1.Priority_PRIORITY_HIGH {
+		t.Errorf("got priority %v, want %v", todo.GetPriority(), todov1.Priority_PRIORITY_HIGH)
+	}
+
+	// Verify the scope event
+	watchResp, err := stream.Recv()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ev := watchResp.GetEvent()
+
+	if ev.GetMethod() != "/todo.v1.TodoService/CreateTodo" {
+		t.Errorf("got method %q, want %q", ev.GetMethod(), "/todo.v1.TodoService/CreateTodo")
+	}
+
+	// OK = codes.OK(0) + 1 = 1
+	if ev.GetStatusCode() != 1 {
+		t.Errorf("got status code %d, want %d", ev.GetStatusCode(), 1)
+	}
+
+	if !strings.Contains(ev.GetRequestPayload(), "Buy milk") {
+		t.Error("expected request payload to contain 'Buy milk'")
+	}
+
+	if !strings.Contains(ev.GetResponsePayload(), "Buy milk") {
+		t.Error("expected response payload to contain 'Buy milk'")
+	}
+}
+
+func TestE2E_GetTodo_NotFound(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	c := setupE2E(t)
+
+	stream, err := c.scope.Watch(ctx, &scopev1.WatchRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	waitForSubscriber(t, c.scopeS, 1)
+
+	// Try to get a non-existent todo
+	_, err = c.todo.GetTodo(ctx, &todov1.GetTodoRequest{Id: "nonexistent"})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	// Verify the scope event
+	watchResp, err := stream.Recv()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ev := watchResp.GetEvent()
+
+	if ev.GetMethod() != "/todo.v1.TodoService/GetTodo" {
+		t.Errorf("got method %q, want %q", ev.GetMethod(), "/todo.v1.TodoService/GetTodo")
+	}
+
+	// NotFound = codes.NotFound(5) + 1 = 6
+	if ev.GetStatusCode() != 6 {
+		t.Errorf("got status code %d, want %d (NotFound)", ev.GetStatusCode(), 6)
 	}
 }
