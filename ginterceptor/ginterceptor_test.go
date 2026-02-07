@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	scopev1 "github.com/mickamy/grpc-scope/gen/scope/v1"
+	scopev1 "github.com/mickamy/grpc-scope/scope/gen/scope/v1"
 	"github.com/mickamy/grpc-scope/ginterceptor"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

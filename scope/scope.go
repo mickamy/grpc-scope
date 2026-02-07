@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/mickamy/grpc-scope/domain"
-	"github.com/mickamy/grpc-scope/internal/event"
-	"github.com/mickamy/grpc-scope/internal/server"
+	"github.com/mickamy/grpc-scope/scope/domain"
+	"github.com/mickamy/grpc-scope/scope/internal/event"
+	"github.com/mickamy/grpc-scope/scope/internal/server"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )

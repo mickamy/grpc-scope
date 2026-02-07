@@ -306,9 +306,9 @@ const file_scope_v1_scope_proto_rawDesc = "" +
 	"\rWatchResponse\x12)\n" +
 	"\x05event\x18\x01 \x01(\v2\x13.scope.v1.CallEventR\x05event2J\n" +
 	"\fScopeService\x12:\n" +
-	"\x05Watch\x12\x16.scope.v1.WatchRequest\x1a\x17.scope.v1.WatchResponse0\x01B\x8f\x01\n" +
+	"\x05Watch\x12\x16.scope.v1.WatchRequest\x1a\x17.scope.v1.WatchResponse0\x01B\x95\x01\n" +
 	"\fcom.scope.v1B\n" +
-	"ScopeProtoP\x01Z2github.com/mickamy/grpc-scope/gen/scope/v1;scopev1\xa2\x02\x03SXX\xaa\x02\bScope.V1\xca\x02\bScope\\V1\xe2\x02\x14Scope\\V1\\GPBMetadata\xea\x02\tScope::V1b\x06proto3"
+	"ScopeProtoP\x01Z8github.com/mickamy/grpc-scope/scope/gen/scope/v1;scopev1\xa2\x02\x03SXX\xaa\x02\bScope.V1\xca\x02\bScope\\V1\xe2\x02\x14Scope\\V1\\GPBMetadata\xea\x02\tScope::V1b\x06proto3"
 
 var (
 	file_scope_v1_scope_proto_rawDescOnce sync.Once

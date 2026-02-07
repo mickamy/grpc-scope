@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mickamy/grpc-scope/domain"
-	"github.com/mickamy/grpc-scope/internal/event"
+	"github.com/mickamy/grpc-scope/scope/domain"
+	"github.com/mickamy/grpc-scope/scope/internal/event"
 )
 
 func TestBroker_SubscribeReceivesPublishedEvents(t *testing.T) {

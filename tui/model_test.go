@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	scopev1 "github.com/mickamy/grpc-scope/gen/scope/v1"
+	scopev1 "github.com/mickamy/grpc-scope/scope/gen/scope/v1"
 	"github.com/mickamy/grpc-scope/tui"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"

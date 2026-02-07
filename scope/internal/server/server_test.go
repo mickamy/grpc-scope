@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	scopev1 "github.com/mickamy/grpc-scope/gen/scope/v1"
-	"github.com/mickamy/grpc-scope/domain"
-	"github.com/mickamy/grpc-scope/internal/event"
-	"github.com/mickamy/grpc-scope/internal/server"
+	scopev1 "github.com/mickamy/grpc-scope/scope/gen/scope/v1"
+	"github.com/mickamy/grpc-scope/scope/domain"
+	"github.com/mickamy/grpc-scope/scope/internal/event"
+	"github.com/mickamy/grpc-scope/scope/internal/server"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
