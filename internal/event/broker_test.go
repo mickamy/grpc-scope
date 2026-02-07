@@ -1,6 +1,7 @@
 package event_test
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -138,7 +139,7 @@ func TestBroker_ConcurrentPublish(t *testing.T) {
 	for i := range n {
 		go func() {
 			defer wg.Done()
-			b.Publish(domain.CallEvent{ID: string(rune('A' + i))})
+			b.Publish(domain.CallEvent{ID: fmt.Sprintf("evt-%d", i)})
 		}()
 	}
 

@@ -46,6 +46,13 @@ func (b *Broker) Subscribe() (<-chan domain.CallEvent, func()) {
 	return ch, unsubscribe
 }
 
+// SubscriberCount returns the number of active subscribers.
+func (b *Broker) SubscriberCount() int {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return len(b.subscribers)
+}
+
 // Publish sends an event to all current subscribers.
 // Slow subscribers that have full buffers will have the event dropped.
 func (b *Broker) Publish(event domain.CallEvent) {
