@@ -23,7 +23,7 @@ import (
 type viewMode int
 
 const (
-	viewList   viewMode = iota
+	viewList viewMode = iota
 	viewReplay
 )
 
@@ -46,10 +46,10 @@ type connectedMsg struct {
 
 // ReplayResultMsg is sent when a replay call completes.
 type ReplayResultMsg struct {
-	Result     *replay.Result
-	Method     string
+	Result      *replay.Result
+	Method      string
 	RequestJSON string
-	Err        error
+	Err         error
 }
 
 // EditorFinishedMsg is sent when the $EDITOR exits.
@@ -108,7 +108,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.conn = msg.conn
 		return m, recvEvent(msg.stream)
 	case EventMsg:
-		if !strings.HasPrefix(msg.Event.GetMethod(), "/grpc.reflection.") && !isReplayEvent(msg.Event) {
+		if !strings.HasPrefix(msg.Event.GetMethod(), "/grpc.reflection.") {
 			m.events = append(m.events, nil)
 			copy(m.events[1:], m.events)
 			m.events[0] = msg.Event
@@ -532,15 +532,6 @@ func (m Model) openEditor(ev *scopev1.CallEvent) tea.Cmd {
 		}
 		return EditorFinishedMsg{Payload: string(edited), Event: ev}
 	})
-}
-
-func isReplayEvent(ev *scopev1.CallEvent) bool {
-	if md := ev.GetRequestMetadata(); md != nil {
-		if vals := md[replay.ReplayMetadataKey]; vals != nil {
-			return len(vals.GetValues()) > 0
-		}
-	}
-	return false
 }
 
 func metadataFromEvent(ev *scopev1.CallEvent) map[string][]string {
