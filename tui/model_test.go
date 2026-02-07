@@ -129,4 +129,3 @@ func TestModel_View_NoEvents(t *testing.T) {
 		t.Errorf("expected 'No events yet' in view, got:\n%s", view)
 	}
 }
-

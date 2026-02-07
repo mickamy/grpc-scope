@@ -3,8 +3,8 @@ package server
 import (
 	"net"
 
-	scopev1 "github.com/mickamy/grpc-scope/scope/gen/scope/v1"
 	"github.com/mickamy/grpc-scope/scope/domain"
+	scopev1 "github.com/mickamy/grpc-scope/scope/gen/scope/v1"
 	"github.com/mickamy/grpc-scope/scope/internal/event"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/durationpb"
