@@ -34,20 +34,23 @@ type connectedMsg struct {
 
 // Model is the Bubbletea model for the monitor TUI.
 type Model struct {
-	target string
-	events []*scopev1.CallEvent
-	cursor int
-	width  int
-	height int
-	err    error
-	conn   *grpc.ClientConn
-	cancel context.CancelFunc
+	target    string
+	appTarget string // application server address for replay (empty = disabled)
+	events    []*scopev1.CallEvent
+	cursor    int
+	width     int
+	height    int
+	err       error
+	conn      *grpc.ClientConn
+	cancel    context.CancelFunc
 }
 
 // NewModel creates a new TUI model that connects to the given target address.
-func NewModel(target string) Model {
+// appTarget is the application server address for replay; empty disables replay.
+func NewModel(target, appTarget string) Model {
 	return Model{
-		target: target,
+		target:    target,
+		appTarget: appTarget,
 	}
 }
 

@@ -27,7 +27,7 @@ func newTestEvent(id, method string, statusCode int32) *scopev1.CallEvent {
 func TestModel_Update_EventMsg(t *testing.T) {
 	t.Parallel()
 
-	m := tui.NewModel("localhost:9090")
+	m := tui.NewModel("localhost:9090", "")
 
 	ev := newTestEvent("evt-1", "/test.v1.Test/Get", 1)
 	updated, _ := m.Update(tui.EventMsg{Event: ev})
@@ -50,7 +50,7 @@ func TestModel_Update_EventMsg(t *testing.T) {
 func TestModel_Update_CursorNavigation(t *testing.T) {
 	t.Parallel()
 
-	m := tui.NewModel("localhost:9090")
+	m := tui.NewModel("localhost:9090", "")
 
 	// Set window size
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
@@ -93,7 +93,7 @@ func TestModel_Update_CursorNavigation(t *testing.T) {
 func TestModel_Update_CursorBounds(t *testing.T) {
 	t.Parallel()
 
-	m := tui.NewModel("localhost:9090")
+	m := tui.NewModel("localhost:9090", "")
 
 	// Move up with no events should not panic
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
@@ -107,7 +107,7 @@ func TestModel_Update_CursorBounds(t *testing.T) {
 func TestModel_Update_ErrMsg(t *testing.T) {
 	t.Parallel()
 
-	m := tui.NewModel("localhost:9090")
+	m := tui.NewModel("localhost:9090", "")
 	updated, _ := m.Update(tui.ErrMsg{Err: fmt.Errorf("connection refused")})
 	model := updated.(tui.Model)
 
@@ -120,7 +120,7 @@ func TestModel_Update_ErrMsg(t *testing.T) {
 func TestModel_View_NoEvents(t *testing.T) {
 	t.Parallel()
 
-	m := tui.NewModel("localhost:9090")
+	m := tui.NewModel("localhost:9090", "")
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model := updated.(tui.Model)
 

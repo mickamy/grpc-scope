@@ -32,12 +32,17 @@ func main() {
 
 func runMonitor() {
 	if len(os.Args) < 3 {
-		fmt.Fprintln(os.Stderr, "usage: grpc-scope monitor <host:port>")
+		fmt.Fprintln(os.Stderr, "usage: grpc-scope monitor <scope-addr> [app-addr]")
 		os.Exit(1)
 	}
 
 	target := os.Args[2]
-	m := tui.NewModel(target)
+	var appTarget string
+	if len(os.Args) >= 4 {
+		appTarget = os.Args[3]
+	}
+
+	m := tui.NewModel(target, appTarget)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {
@@ -51,6 +56,7 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintf(os.Stderr, "Usage: grpc-scope <command> [args]\n\n")
 	fmt.Fprintln(os.Stderr, "Commands:")
-	fmt.Fprintln(os.Stderr, "  monitor <host:port>   Watch gRPC traffic in real-time")
-	fmt.Fprintln(os.Stderr, "  version               Print version")
+	fmt.Fprintln(os.Stderr, "  monitor <scope-addr> [app-addr]   Watch gRPC traffic in real-time")
+	fmt.Fprintln(os.Stderr, "                                    app-addr enables replay (r/e keys)")
+	fmt.Fprintln(os.Stderr, "  version                           Print version")
 }
