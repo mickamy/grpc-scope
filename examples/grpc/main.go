@@ -8,6 +8,7 @@ import (
 
 	"github.com/mickamy/grpc-scope/ginterceptor"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 
 	greeterv1 "github.com/mickamy/grpc-scope/examples/grpc/gen/greeter/v1"
 )
@@ -34,6 +35,7 @@ func main() {
 		grpc.StreamInterceptor(scope.StreamInterceptor()),
 	)
 	greeterv1.RegisterGreeterServiceServer(srv, &greeterServer{})
+	reflection.Register(srv)
 
 	lis, err := net.Listen("tcp", ":8080")
 	if err != nil {
