@@ -79,26 +79,26 @@ func TestModel_Update_CursorNavigation(t *testing.T) {
 		m = updated.(tui.Model)
 	}
 
-	// Cursor starts at 0, move down
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	// After prepend, events are [C, B, A] and cursor=2 (pointing at A, the oldest).
+	// Move cursor to 0 (newest = C) first.
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	m = updated.(tui.Model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
 	m = updated.(tui.Model)
 
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-	m = updated.(tui.Model)
-
-	// Should show detail for third event (cursor=2)
+	// Cursor=0 should show newest event (MethodC)
 	view := m.View()
 	if !strings.Contains(view, "/test.v1.Test/MethodC") {
-		t.Errorf("expected detail to show third method, got:\n%s", view)
+		t.Errorf("expected detail to show newest method (MethodC), got:\n%s", view)
 	}
 
-	// Move up
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	// Move down (older)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	m = updated.(tui.Model)
 
 	view = m.View()
 	if !strings.Contains(view, "/test.v1.Test/MethodB") {
-		t.Errorf("expected detail to show second method, got:\n%s", view)
+		t.Errorf("expected detail to show second method (MethodB), got:\n%s", view)
 	}
 }
 

@@ -109,7 +109,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, recvEvent(msg.stream)
 	case EventMsg:
 		if !strings.HasPrefix(msg.Event.GetMethod(), "/grpc.reflection.") && !isReplayEvent(msg.Event) {
-			m.events = append(m.events, msg.Event)
+			m.events = append(m.events, nil)
+			copy(m.events[1:], m.events)
+			m.events[0] = msg.Event
+			if len(m.events) > 1 {
+				m.cursor++
+			}
 		}
 		return m, recvEvent(msg.stream)
 	case ErrMsg:
@@ -272,11 +277,8 @@ func (m Model) renderList(maxRows int) string {
 	lines := []string{headerStyle.Render(header)}
 
 	start := 0
-	if len(m.events) > maxRows {
-		start = len(m.events) - maxRows
-		if m.cursor < start {
-			start = m.cursor
-		}
+	if m.cursor >= maxRows {
+		start = m.cursor - maxRows + 1
 	}
 
 	end := start + maxRows
