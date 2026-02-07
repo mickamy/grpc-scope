@@ -174,7 +174,11 @@ func (c *Client) resolveMethod(ctx context.Context, svc, method string) (protore
 	}
 
 	// Build a protoregistry.Files from the returned file descriptors.
+	// Use a resolver that falls back to GlobalFiles for well-known types
+	// (e.g. google/protobuf/timestamp.proto) that may not be included in
+	// the reflection response.
 	files := new(protoregistry.Files)
+	resolver := &fallbackResolver{local: files, global: protoregistry.GlobalFiles}
 	for _, raw := range fdResp.GetFileDescriptorProto() {
 		fdProto := new(descriptorpb.FileDescriptorProto)
 		if err := proto.Unmarshal(raw, fdProto); err != nil {
@@ -185,8 +189,12 @@ func (c *Client) resolveMethod(ctx context.Context, svc, method string) (protore
 		if _, regErr := files.FindFileByPath(fdProto.GetName()); regErr == nil {
 			continue
 		}
+		// Skip if available in global registry (well-known types).
+		if _, regErr := protoregistry.GlobalFiles.FindFileByPath(fdProto.GetName()); regErr == nil {
+			continue
+		}
 
-		fd, err := protodesc.NewFile(fdProto, files)
+		fd, err := protodesc.NewFile(fdProto, resolver)
 		if err != nil {
 			return nil, nil, fmt.Errorf("replay: build file descriptor %s: %w", fdProto.GetName(), err)
 		}
@@ -195,8 +203,8 @@ func (c *Client) resolveMethod(ctx context.Context, svc, method string) (protore
 		}
 	}
 
-	// Find the service descriptor.
-	svcDesc, err := files.FindDescriptorByName(protoreflect.FullName(svc))
+	// Find the service descriptor (check local first, then global).
+	svcDesc, err := resolver.FindDescriptorByName(protoreflect.FullName(svc))
 	if err != nil {
 		return nil, nil, fmt.Errorf("replay: find service %q: %w", svc, err)
 	}
@@ -216,6 +224,29 @@ func (c *Client) resolveMethod(ctx context.Context, svc, method string) (protore
 	}
 
 	return methodDesc.Input(), methodDesc.Output(), nil
+}
+
+// fallbackResolver tries the local registry first, then falls back to global.
+// This allows well-known types (e.g. google.protobuf.Timestamp) to be resolved
+// from the Go runtime's built-in registry when the reflection response doesn't
+// include them.
+type fallbackResolver struct {
+	local  *protoregistry.Files
+	global *protoregistry.Files
+}
+
+func (r *fallbackResolver) FindFileByPath(path string) (protoreflect.FileDescriptor, error) {
+	if fd, err := r.local.FindFileByPath(path); err == nil {
+		return fd, nil
+	}
+	return r.global.FindFileByPath(path)
+}
+
+func (r *fallbackResolver) FindDescriptorByName(name protoreflect.FullName) (protoreflect.Descriptor, error) {
+	if d, err := r.local.FindDescriptorByName(name); err == nil {
+		return d, nil
+	}
+	return r.global.FindDescriptorByName(name)
 }
 
 // FilterMetadata removes internal gRPC headers that should not be forwarded.
