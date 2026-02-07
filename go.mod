@@ -3,6 +3,7 @@ module github.com/mickamy/grpc-scope
 go 1.24.0
 
 require (
+	connectrpc.com/connect v1.19.1
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	google.golang.org/grpc v1.78.0
