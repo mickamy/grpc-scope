@@ -112,8 +112,8 @@ func TestModel_Update_ErrMsg(t *testing.T) {
 	model := updated.(tui.Model)
 
 	view := model.View()
-	if !strings.Contains(view, "connection refused") {
-		t.Errorf("expected error in view, got:\n%s", view)
+	if !strings.Contains(view, "Is the interceptor running") {
+		t.Errorf("expected friendly error in view, got:\n%s", view)
 	}
 }
 

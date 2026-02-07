@@ -10,7 +10,9 @@ import (
 	scopev1 "github.com/mickamy/grpc-scope/gen/scope/v1"
 	"github.com/mickamy/grpc-scope/internal/domain"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 // EventMsg is sent when a new call event is received from the Watch stream.
@@ -86,7 +88,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) View() string {
 	if m.err != nil {
-		return fmt.Sprintf("Error: %v\nPress q to quit.", m.err)
+		return fmt.Sprintf("%s\nPress q to quit.", friendlyError(m.target, m.err))
 	}
 
 	if m.width == 0 {
@@ -246,6 +248,41 @@ func (m *Model) cleanup() {
 	if m.conn != nil {
 		_ = m.conn.Close()
 	}
+}
+
+func friendlyError(target string, err error) string {
+	st, ok := status.FromError(err)
+	if ok {
+		switch st.Code() {
+		case codes.Unavailable:
+			return fmt.Sprintf(
+				"Could not connect to %s\n\n"+
+					"Make sure the interceptor is running in your gRPC server:\n\n"+
+					"  scope := interceptor.New(interceptor.WithPort(...))\n"+
+					"  grpc.NewServer(\n"+
+					"    grpc.UnaryInterceptor(scope.UnaryInterceptor()),\n"+
+					"  )",
+				target,
+			)
+		case codes.Unimplemented:
+			return fmt.Sprintf(
+				"Connected to %s, but ScopeService is not available.\n\n"+
+					"The server does not have the grpc-scope interceptor installed.\n"+
+					"Make sure you are connecting to the interceptor port, not your app port.",
+				target,
+			)
+		}
+	}
+
+	if strings.Contains(err.Error(), "connection refused") {
+		return fmt.Sprintf(
+			"Connection refused: %s\n\n"+
+				"Is the interceptor running on this address?",
+			target,
+		)
+	}
+
+	return fmt.Sprintf("Error: %v", err)
 }
 
 func truncate(s string, max int) string {
