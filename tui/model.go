@@ -75,9 +75,10 @@ type Model struct {
 }
 
 type replayResultView struct {
-	method        string
-	result        *replay.Result
-	err           error
+	method string
+	result *replay.Result
+	err    error
+	scroll int // scroll offset for viewing long content
 }
 
 // NewModel creates a new TUI model that connects to the given target address.
@@ -145,11 +146,15 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case "up", "k":
-		if m.mode == viewList && m.cursor > 0 {
+		if m.mode == viewReplay && m.replayResult != nil && m.replayResult.scroll > 0 {
+			m.replayResult.scroll--
+		} else if m.mode == viewList && m.cursor > 0 {
 			m.cursor--
 		}
 	case "down", "j":
-		if m.mode == viewList && m.cursor < len(m.events)-1 {
+		if m.mode == viewReplay && m.replayResult != nil {
+			m.replayResult.scroll++
+		} else if m.mode == viewList && m.cursor < len(m.events)-1 {
 			m.cursor++
 		}
 	case "r":
@@ -378,19 +383,39 @@ func (m Model) renderReplayResult() string {
 		}
 	}
 
-	content := b.String()
+	allLines := strings.Split(b.String(), "\n")
 
-	// Pad with newlines to push help text to the bottom.
-	// border(2) + content + pad + help(1) = m.height
-	contentLines := strings.Count(content, "\n") + 1
-	pad := m.height - 2 - contentLines - 1
-	if pad < 1 {
-		pad = 1
+	// Visible area: border(2) + visible + help(1) = m.height
+	visibleMax := m.height - 2 - 1
+	if visibleMax < 3 {
+		visibleMax = 3
 	}
-	content += strings.Repeat("\n", pad)
-	content += helpStyle.Render("Press esc to go back")
 
-	return borderStyle.Width(m.width - 2).Render(content)
+	// Clamp scroll offset.
+	maxScroll := len(allLines) - visibleMax
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if m.replayResult.scroll > maxScroll {
+		m.replayResult.scroll = maxScroll
+	}
+
+	// Slice visible window.
+	start := m.replayResult.scroll
+	end := start + visibleMax
+	if end > len(allLines) {
+		end = len(allLines)
+	}
+	visible := allLines[start:end]
+
+	// Pad to push help text to the bottom.
+	pad := visibleMax - len(visible)
+	for range pad {
+		visible = append(visible, "")
+	}
+	visible = append(visible, helpStyle.Render("esc: back  j/k: scroll"))
+
+	return borderStyle.Width(m.width - 2).Render(strings.Join(visible, "\n"))
 }
 
 func (m Model) renderHelp() string {

@@ -191,7 +191,7 @@ func TestModel_Update_ReplayResultMsg(t *testing.T) {
 	model := updated.(tui.Model)
 
 	view := model.View()
-	if !strings.Contains(view, "Press esc to go back") {
+	if !strings.Contains(view, "esc: back") {
 		t.Error("expected replay result view")
 	}
 	if !strings.Contains(view, "OK") {
@@ -266,7 +266,7 @@ func TestModel_Update_EscFromReplayView(t *testing.T) {
 	m = updated.(tui.Model)
 
 	view := m.View()
-	if strings.Contains(view, "Press esc to go back") {
+	if strings.Contains(view, "esc: back") {
 		t.Error("expected to return to list view after esc")
 	}
 	if !strings.Contains(view, "gRPC Traffic") {
@@ -326,7 +326,7 @@ func TestModel_Update_CursorIgnoredInReplayView(t *testing.T) {
 	m = updated.(tui.Model)
 
 	view := m.View()
-	if !strings.Contains(view, "Press esc to go back") {
+	if !strings.Contains(view, "esc: back") {
 		t.Error("expected to stay in replay view")
 	}
 }
