@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mickamy/grpc-scope/internal/domain"
+	"github.com/mickamy/grpc-scope/domain"
 )
 
 func TestCallEvent_IsError(t *testing.T) {

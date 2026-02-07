@@ -3,7 +3,7 @@ package event
 import (
 	"sync"
 
-	"github.com/mickamy/grpc-scope/internal/domain"
+	"github.com/mickamy/grpc-scope/domain"
 )
 
 // Broker fans out CallEvents to all active subscribers.

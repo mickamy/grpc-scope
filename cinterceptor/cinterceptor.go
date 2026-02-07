@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"github.com/mickamy/grpc-scope/internal/domain"
+	"github.com/mickamy/grpc-scope/domain"
 	"github.com/mickamy/grpc-scope/internal/event"
 	"github.com/mickamy/grpc-scope/internal/server"
 	"google.golang.org/protobuf/encoding/protojson"

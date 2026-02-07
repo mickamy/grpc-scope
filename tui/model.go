@@ -8,7 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	scopev1 "github.com/mickamy/grpc-scope/gen/scope/v1"
-	"github.com/mickamy/grpc-scope/internal/domain"
+	"github.com/mickamy/grpc-scope/domain"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"

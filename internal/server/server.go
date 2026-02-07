@@ -4,7 +4,7 @@ import (
 	"net"
 
 	scopev1 "github.com/mickamy/grpc-scope/gen/scope/v1"
-	"github.com/mickamy/grpc-scope/internal/domain"
+	"github.com/mickamy/grpc-scope/domain"
 	"github.com/mickamy/grpc-scope/internal/event"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/durationpb"
