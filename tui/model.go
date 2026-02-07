@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -183,13 +185,27 @@ func (m Model) View() string {
 		return m.renderReplayResult()
 	}
 
-	listHeight := m.height/2 - 2
-	if listHeight < 3 {
-		listHeight = 3
+	maxListHeight := m.height/3 - 1
+	if maxListHeight < 3 {
+		maxListHeight = 3
+	}
+	listHeight := len(m.events)
+	if listHeight > maxListHeight {
+		listHeight = maxListHeight
+	}
+	if listHeight < 1 {
+		listHeight = 1
 	}
 
 	list := m.renderList(listHeight)
-	detail := m.renderDetail()
+	// list panel = border(2) + title(1) + header(1) + rows = listHeight + 4
+	// detail panel = border(2) + content
+	// help = 1
+	detailMaxLines := m.height - (listHeight + 4) - 1 - 2 // 2 for detail border
+	if detailMaxLines < 3 {
+		detailMaxLines = 3
+	}
+	detail := m.renderDetail(detailMaxLines)
 	help := m.renderHelp()
 
 	return lipgloss.JoinVertical(lipgloss.Left, list, detail, help)
@@ -273,9 +289,9 @@ func (m Model) renderList(maxRows int) string {
 	return borderStyle.Width(m.width - 2).Render(title + "\n" + content)
 }
 
-func (m Model) renderDetail() string {
+func (m Model) renderDetail(maxLines int) string {
 	if len(m.events) == 0 {
-		return borderStyle.Width(m.width - 2).Render(" Detail \nNo events yet.")
+		return borderStyle.Width(m.width - 2).Render("No events yet.")
 	}
 
 	ev := m.events[m.cursor]
@@ -290,30 +306,33 @@ func (m Model) renderDetail() string {
 	if msg := ev.GetStatusMessage(); msg != "" {
 		b.WriteString(fmt.Sprintf(" (%s)", msg))
 	}
-	b.WriteString("\n")
 
 	if ev.GetDuration() != nil {
+		b.WriteString("  ")
 		b.WriteString(labelStyle.Render("Latency: "))
 		b.WriteString(ev.GetDuration().AsDuration().String())
-		b.WriteString("\n")
 	}
+	b.WriteString("\n")
 
 	if ev.GetRequestPayload() != "" {
-		b.WriteString("\n")
-		b.WriteString(labelStyle.Render("Request:"))
-		b.WriteString("\n")
-		b.WriteString(ev.GetRequestPayload())
+		b.WriteString(labelStyle.Render("Request: "))
+		b.WriteString(prettyJSON(ev.GetRequestPayload()))
 		b.WriteString("\n")
 	}
 
 	if ev.GetResponsePayload() != "" {
-		b.WriteString("\n")
-		b.WriteString(labelStyle.Render("Response:"))
-		b.WriteString("\n")
-		b.WriteString(ev.GetResponsePayload())
+		b.WriteString(labelStyle.Render("Response: "))
+		b.WriteString(prettyJSON(ev.GetResponsePayload()))
 	}
 
-	return borderStyle.Width(m.width - 2).Render(" Detail \n" + b.String())
+	content := b.String()
+	lines := strings.Split(content, "\n")
+	if len(lines) > maxLines {
+		lines = lines[:maxLines-1]
+		lines = append(lines, helpStyle.Render("..."))
+	}
+
+	return borderStyle.Width(m.width - 2).Render(strings.Join(lines, "\n"))
 }
 
 func (m Model) renderReplayResult() string {
@@ -325,7 +344,7 @@ func (m Model) renderReplayResult() string {
 
 	b.WriteString(labelStyle.Render("Method: "))
 	b.WriteString(m.replayResult.method)
-	b.WriteString("\n\n")
+	b.WriteString("\n")
 
 	if m.replayResult.err != nil {
 		b.WriteString(errorStyle.Render("Error: "))
@@ -333,9 +352,8 @@ func (m Model) renderReplayResult() string {
 		b.WriteString("\n")
 
 		if strings.Contains(m.replayResult.err.Error(), "Unimplemented") {
-			b.WriteString("\n")
 			b.WriteString("The server may not have reflection enabled.\n")
-			b.WriteString("Add to your server:\n\n")
+			b.WriteString("Add to your server:\n")
 			b.WriteString("  import \"google.golang.org/grpc/reflection\"\n")
 			b.WriteString("  reflection.Register(srv)\n")
 		}
@@ -349,24 +367,30 @@ func (m Model) renderReplayResult() string {
 				b.WriteString(fmt.Sprintf(" (%s)", r.StatusMessage))
 			}
 		}
-		b.WriteString("\n")
-
+		b.WriteString("  ")
 		b.WriteString(labelStyle.Render("Duration: "))
 		b.WriteString(r.Duration.String())
 		b.WriteString("\n")
 
 		if r.ResponseJSON != "" {
-			b.WriteString("\n")
-			b.WriteString(labelStyle.Render("Response:"))
-			b.WriteString("\n")
-			b.WriteString(r.ResponseJSON)
+			b.WriteString(labelStyle.Render("Response: "))
+			b.WriteString(prettyJSON(r.ResponseJSON))
 		}
 	}
 
-	b.WriteString("\n\n")
-	b.WriteString(helpStyle.Render("Press esc to go back"))
+	content := b.String()
 
-	return borderStyle.Width(m.width - 2).Render(" Replay Result \n" + b.String())
+	// Pad with newlines to push help text to the bottom.
+	// border(2) + content + pad + help(1) = m.height
+	contentLines := strings.Count(content, "\n") + 1
+	pad := m.height - 2 - contentLines - 1
+	if pad < 1 {
+		pad = 1
+	}
+	content += strings.Repeat("\n", pad)
+	content += helpStyle.Render("Press esc to go back")
+
+	return borderStyle.Width(m.width - 2).Render(content)
 }
 
 func (m Model) renderHelp() string {
@@ -525,6 +549,14 @@ func friendlyError(target string, err error) string {
 	}
 
 	return fmt.Sprintf("Error: %v", err)
+}
+
+func prettyJSON(s string) string {
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, []byte(s), "", "  "); err != nil {
+		return s
+	}
+	return buf.String()
 }
 
 func truncate(s string, max int) string {
