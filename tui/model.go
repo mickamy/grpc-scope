@@ -3,16 +3,26 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mickamy/grpc-scope/replay"
 	"github.com/mickamy/grpc-scope/scope/domain"
 	scopev1 "github.com/mickamy/grpc-scope/scope/gen/scope/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
+)
+
+type viewMode int
+
+const (
+	viewList   viewMode = iota
+	viewReplay
 )
 
 // EventMsg is sent when a new call event is received from the Watch stream.
@@ -32,17 +42,40 @@ type connectedMsg struct {
 	conn   *grpc.ClientConn
 }
 
+// ReplayResultMsg is sent when a replay call completes.
+type ReplayResultMsg struct {
+	Result *replay.Result
+	Method string
+	Err    error
+}
+
+// EditorFinishedMsg is sent when the $EDITOR exits.
+type EditorFinishedMsg struct {
+	Payload string
+	Event   *scopev1.CallEvent
+	Err     error
+}
+
 // Model is the Bubbletea model for the monitor TUI.
 type Model struct {
-	target    string
-	appTarget string // application server address for replay (empty = disabled)
-	events    []*scopev1.CallEvent
-	cursor    int
-	width     int
-	height    int
-	err       error
-	conn      *grpc.ClientConn
-	cancel    context.CancelFunc
+	target       string
+	appTarget    string // application server address for replay (empty = disabled)
+	events       []*scopev1.CallEvent
+	cursor       int
+	width        int
+	height       int
+	err          error
+	conn         *grpc.ClientConn
+	cancel       context.CancelFunc
+	mode         viewMode
+	replayResult *replayResultView
+	replaying    bool
+}
+
+type replayResultView struct {
+	method        string
+	result        *replay.Result
+	err           error
 }
 
 // NewModel creates a new TUI model that connects to the given target address.
@@ -61,19 +94,7 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "q", "ctrl+c":
-			m.cleanup()
-			return m, tea.Quit
-		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		case "down", "j":
-			if m.cursor < len(m.events)-1 {
-				m.cursor++
-			}
-		}
+		return m.handleKey(msg)
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -85,8 +106,66 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, recvEvent(msg.stream)
 	case ErrMsg:
 		m.err = msg.Err
+	case ReplayResultMsg:
+		m.replaying = false
+		m.mode = viewReplay
+		m.replayResult = &replayResultView{
+			method: msg.Method,
+			result: msg.Result,
+			err:    msg.Err,
+		}
+	case EditorFinishedMsg:
+		if msg.Err != nil {
+			m.replaying = false
+			m.mode = viewReplay
+			m.replayResult = &replayResultView{
+				method: msg.Event.GetMethod(),
+				err:    msg.Err,
+			}
+			return m, nil
+		}
+		return m, m.doReplay(msg.Event, msg.Payload)
 	}
 	return m, nil
+}
+
+func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "q", "ctrl+c":
+		m.cleanup()
+		return m, tea.Quit
+	case "esc":
+		if m.mode == viewReplay {
+			m.mode = viewList
+			m.replayResult = nil
+			return m, nil
+		}
+	case "up", "k":
+		if m.mode == viewList && m.cursor > 0 {
+			m.cursor--
+		}
+	case "down", "j":
+		if m.mode == viewList && m.cursor < len(m.events)-1 {
+			m.cursor++
+		}
+	case "r":
+		if m.canReplay() {
+			m.replaying = true
+			ev := m.events[m.cursor]
+			return m, m.doReplay(ev, ev.GetRequestPayload())
+		}
+	case "e":
+		if m.canReplay() {
+			m.replaying = true
+			ev := m.events[m.cursor]
+			return m, m.openEditor(ev)
+		}
+	}
+	return m, nil
+}
+
+func (m Model) canReplay() bool {
+	return m.appTarget != "" && len(m.events) > 0 && !m.replaying && m.mode == viewList
 }
 
 func (m Model) View() string {
@@ -98,6 +177,10 @@ func (m Model) View() string {
 		return "Connecting..."
 	}
 
+	if m.mode == viewReplay {
+		return m.renderReplayResult()
+	}
+
 	listHeight := m.height/2 - 2
 	if listHeight < 3 {
 		listHeight = 3
@@ -105,8 +188,9 @@ func (m Model) View() string {
 
 	list := m.renderList(listHeight)
 	detail := m.renderDetail()
+	help := m.renderHelp()
 
-	return lipgloss.JoinVertical(lipgloss.Left, list, detail)
+	return lipgloss.JoinVertical(lipgloss.Left, list, detail, help)
 }
 
 var (
@@ -115,6 +199,8 @@ var (
 	errorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	borderStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
 	labelStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
+	helpStyle     = lipgloss.NewStyle().Faint(true)
+	successStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("2"))
 )
 
 func (m Model) renderList(maxRows int) string {
@@ -211,6 +297,142 @@ func (m Model) renderDetail() string {
 	}
 
 	return borderStyle.Width(m.width - 2).Render(" Detail \n" + b.String())
+}
+
+func (m Model) renderReplayResult() string {
+	if m.replayResult == nil {
+		return ""
+	}
+
+	var b strings.Builder
+
+	b.WriteString(labelStyle.Render("Method: "))
+	b.WriteString(m.replayResult.method)
+	b.WriteString("\n\n")
+
+	if m.replayResult.err != nil {
+		b.WriteString(errorStyle.Render("Error: "))
+		b.WriteString(m.replayResult.err.Error())
+		b.WriteString("\n")
+
+		if strings.Contains(m.replayResult.err.Error(), "Unimplemented") {
+			b.WriteString("\n")
+			b.WriteString("The server may not have reflection enabled.\n")
+			b.WriteString("Add to your server:\n\n")
+			b.WriteString("  import \"google.golang.org/grpc/reflection\"\n")
+			b.WriteString("  reflection.Register(srv)\n")
+		}
+	} else {
+		r := m.replayResult.result
+		if r.StatusCode == 0 {
+			b.WriteString(successStyle.Render("Status: OK"))
+		} else {
+			b.WriteString(errorStyle.Render(fmt.Sprintf("Status: %s", codes.Code(r.StatusCode).String())))
+			if r.StatusMessage != "" {
+				b.WriteString(fmt.Sprintf(" (%s)", r.StatusMessage))
+			}
+		}
+		b.WriteString("\n")
+
+		b.WriteString(labelStyle.Render("Duration: "))
+		b.WriteString(r.Duration.String())
+		b.WriteString("\n")
+
+		if r.ResponseJSON != "" {
+			b.WriteString("\n")
+			b.WriteString(labelStyle.Render("Response:"))
+			b.WriteString("\n")
+			b.WriteString(r.ResponseJSON)
+		}
+	}
+
+	b.WriteString("\n\n")
+	b.WriteString(helpStyle.Render("Press esc to go back"))
+
+	return borderStyle.Width(m.width - 2).Render(" Replay Result \n" + b.String())
+}
+
+func (m Model) renderHelp() string {
+	parts := []string{"q: quit", "j/k: navigate"}
+	if m.appTarget != "" && len(m.events) > 0 {
+		parts = append(parts, "r: replay", "e: edit & replay")
+	}
+	return helpStyle.Render("  " + strings.Join(parts, "  "))
+}
+
+func (m Model) doReplay(ev *scopev1.CallEvent, payloadJSON string) tea.Cmd {
+	appTarget := m.appTarget
+	method := ev.GetMethod()
+	md := metadataFromEvent(ev)
+
+	return func() tea.Msg {
+		client, err := replay.NewClient(appTarget)
+		if err != nil {
+			return ReplayResultMsg{Method: method, Err: err}
+		}
+		defer client.Close()
+
+		result, err := client.Send(context.Background(), replay.Request{
+			Method:      method,
+			PayloadJSON: payloadJSON,
+			Metadata:    md,
+		})
+		return ReplayResultMsg{Result: result, Method: method, Err: err}
+	}
+}
+
+func (m Model) openEditor(ev *scopev1.CallEvent) tea.Cmd {
+	payload := ev.GetRequestPayload()
+	if payload == "" {
+		payload = "{}"
+	}
+
+	tmpFile, err := os.CreateTemp("", "grpc-scope-*.json")
+	if err != nil {
+		return func() tea.Msg {
+			return EditorFinishedMsg{Event: ev, Err: fmt.Errorf("create temp file: %w", err)}
+		}
+	}
+
+	if _, err := tmpFile.WriteString(payload); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpFile.Name())
+		return func() tea.Msg {
+			return EditorFinishedMsg{Event: ev, Err: fmt.Errorf("write temp file: %w", err)}
+		}
+	}
+	tmpFile.Close()
+
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = "vi"
+	}
+
+	path := tmpFile.Name()
+	c := exec.Command(editor, path)
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		defer os.Remove(path)
+		if err != nil {
+			return EditorFinishedMsg{Event: ev, Err: fmt.Errorf("editor: %w", err)}
+		}
+		edited, err := os.ReadFile(path)
+		if err != nil {
+			return EditorFinishedMsg{Event: ev, Err: fmt.Errorf("read edited file: %w", err)}
+		}
+		return EditorFinishedMsg{Payload: string(edited), Event: ev}
+	})
+}
+
+func metadataFromEvent(ev *scopev1.CallEvent) map[string][]string {
+	rm := ev.GetRequestMetadata()
+	if len(rm) == 0 {
+		return nil
+	}
+	md := make(map[string][]string, len(rm))
+	for k, v := range rm {
+		md[k] = v.GetValues()
+	}
+	return md
 }
 
 func (m Model) connect() tea.Cmd {
