@@ -102,7 +102,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.conn = msg.conn
 		return m, recvEvent(msg.stream)
 	case EventMsg:
-		m.events = append(m.events, msg.Event)
+		if !strings.HasPrefix(msg.Event.GetMethod(), "/grpc.reflection.") {
+			m.events = append(m.events, msg.Event)
+		}
 		return m, recvEvent(msg.stream)
 	case ErrMsg:
 		m.err = msg.Err
@@ -203,8 +205,19 @@ var (
 	successStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("2"))
 )
 
+func (m Model) methodColumnWidth() int {
+	// 2(cursor) + method + 1 + 12(status) + 1 + 10(latency) + 1 + 8(time) + 4(border/padding)
+	const fixed = 2 + 1 + 12 + 1 + 10 + 1 + 8 + 4
+	w := m.width - fixed
+	if w < 40 {
+		w = 40
+	}
+	return w
+}
+
 func (m Model) renderList(maxRows int) string {
-	header := fmt.Sprintf("  %-40s %-12s %-10s %s", "Method", "Status", "Latency", "Time")
+	mw := m.methodColumnWidth()
+	header := fmt.Sprintf("  %-*s %-12s %-10s %s", mw, "Method", "Status", "Latency", "Time")
 	lines := []string{headerStyle.Render(header)}
 
 	start := 0
@@ -237,9 +250,10 @@ func (m Model) renderList(maxRows int) string {
 			timeStr = ev.GetStartTime().AsTime().Local().Format("15:04:05")
 		}
 
-		line := fmt.Sprintf("%s%-40s %-12s %-10s %s",
+		line := fmt.Sprintf("%s%-*s %-12s %-10s %s",
 			cursor,
-			truncate(ev.GetMethod(), 40),
+			mw,
+			truncate(ev.GetMethod(), mw),
 			statusStr,
 			latency,
 			timeStr,
