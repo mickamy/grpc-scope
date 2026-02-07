@@ -20,6 +20,10 @@ import (
 	"google.golang.org/protobuf/types/dynamicpb"
 )
 
+// ReplayMetadataKey is the gRPC metadata key attached to every replayed request.
+// The interceptor captures this header so the TUI can filter out replay-originated events.
+const ReplayMetadataKey = "x-grpc-scope-replay"
+
 // Request holds the information needed to replay a gRPC call.
 type Request struct {
 	Method      string              // full method path, e.g. "/pkg.Service/Method"
@@ -83,10 +87,12 @@ func (c *Client) Send(ctx context.Context, req Request) (*Result, error) {
 
 	respMsg := dynamicpb.NewMessage(outputDesc)
 
-	outCtx := ctx
-	if md := FilterMetadata(req.Metadata); len(md) > 0 {
-		outCtx = metadata.NewOutgoingContext(ctx, md)
+	md := FilterMetadata(req.Metadata)
+	if md == nil {
+		md = metadata.MD{}
 	}
+	md.Set(ReplayMetadataKey, "true")
+	outCtx := metadata.NewOutgoingContext(ctx, md)
 
 	callCtx, cancel := context.WithTimeout(outCtx, 30*time.Second)
 	defer cancel()

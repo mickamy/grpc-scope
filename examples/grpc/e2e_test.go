@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -143,5 +144,47 @@ func TestE2E_SayHello(t *testing.T) {
 	// Verify response payload contains "Hello, World!"
 	if ev.GetResponsePayload() == "" {
 		t.Error("expected non-empty response payload")
+	}
+}
+
+func TestE2E_SayHello_LongPayload(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	appClient, scopeClient, scope := setupE2E(t)
+
+	stream, err := scopeClient.Watch(ctx, &scopev1.WatchRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	waitForSubscriber(t, scope, 1)
+
+	// Build a long name (~1000 chars) to produce a large request/response payload.
+	longName := strings.Repeat("abcdefghij", 100)
+
+	resp, err := appClient.SayHello(ctx, &greeterv1.SayHelloRequest{Name: longName})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantMessage := "Hello, " + longName + "!"
+	if resp.GetMessage() != wantMessage {
+		t.Errorf("got message length %d, want %d", len(resp.GetMessage()), len(wantMessage))
+	}
+
+	watchResp, err := stream.Recv()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ev := watchResp.GetEvent()
+
+	if !strings.Contains(ev.GetRequestPayload(), longName) {
+		t.Error("expected request payload to contain the long name")
+	}
+
+	if !strings.Contains(ev.GetResponsePayload(), longName) {
+		t.Error("expected response payload to contain the long name")
 	}
 }

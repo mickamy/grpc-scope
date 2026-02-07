@@ -75,10 +75,11 @@ type Model struct {
 }
 
 type replayResultView struct {
-	method string
-	result *replay.Result
-	err    error
-	scroll int // scroll offset for viewing long content
+	method     string
+	result     *replay.Result
+	err        error
+	scroll     int // scroll offset for viewing long content
+	totalLines int // set during render for scroll bounds
 }
 
 // NewModel creates a new TUI model that connects to the given target address.
@@ -105,7 +106,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.conn = msg.conn
 		return m, recvEvent(msg.stream)
 	case EventMsg:
-		if !strings.HasPrefix(msg.Event.GetMethod(), "/grpc.reflection.") {
+		if !strings.HasPrefix(msg.Event.GetMethod(), "/grpc.reflection.") && !isReplayEvent(msg.Event) {
 			m.events = append(m.events, msg.Event)
 		}
 		return m, recvEvent(msg.stream)
@@ -137,26 +138,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "ctrl+c":
-		m.cleanup()
-		return m, tea.Quit
-	case "esc":
 		if m.mode == viewReplay {
 			m.mode = viewList
 			m.replayResult = nil
 			return m, nil
 		}
+		m.cleanup()
+		return m, tea.Quit
 	case "up", "k":
-		if m.mode == viewReplay && m.replayResult != nil && m.replayResult.scroll > 0 {
-			m.replayResult.scroll--
-		} else if m.mode == viewList && m.cursor > 0 {
-			m.cursor--
-		}
+		return m.navigateUp(), nil
 	case "down", "j":
-		if m.mode == viewReplay && m.replayResult != nil {
-			m.replayResult.scroll++
-		} else if m.mode == viewList && m.cursor < len(m.events)-1 {
-			m.cursor++
-		}
+		return m.navigateDown(), nil
 	case "r":
 		if m.canReplay() {
 			m.replaying = true
@@ -171,6 +163,41 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+func (m Model) navigateUp() Model {
+	if m.mode == viewReplay && m.replayResult != nil && m.replayResult.scroll > 0 {
+		m.replayResult.scroll--
+	} else if m.mode == viewList && m.cursor > 0 {
+		m.cursor--
+	}
+	return m
+}
+
+func (m Model) navigateDown() Model {
+	if m.mode == viewReplay && m.replayResult != nil {
+		if max := m.replayScrollMax(); m.replayResult.scroll < max {
+			m.replayResult.scroll++
+		}
+	} else if m.mode == viewList && m.cursor < len(m.events)-1 {
+		m.cursor++
+	}
+	return m
+}
+
+func (m Model) replayScrollMax() int {
+	if m.replayResult == nil {
+		return 0
+	}
+	visibleMax := m.height - 2 - 1
+	if visibleMax < 3 {
+		visibleMax = 3
+	}
+	max := m.replayResult.totalLines - visibleMax
+	if max < 0 {
+		return 0
+	}
+	return max
 }
 
 func (m Model) canReplay() bool {
@@ -319,15 +346,16 @@ func (m Model) renderDetail(maxLines int) string {
 	}
 	b.WriteString("\n")
 
+	jsonWidth := m.width - 6 // border(2) + padding(2) + margin(2)
 	if ev.GetRequestPayload() != "" {
 		b.WriteString(labelStyle.Render("Request: "))
-		b.WriteString(prettyJSON(ev.GetRequestPayload()))
+		b.WriteString(prettyJSON(ev.GetRequestPayload(), jsonWidth, jsonTruncate))
 		b.WriteString("\n")
 	}
 
 	if ev.GetResponsePayload() != "" {
 		b.WriteString(labelStyle.Render("Response: "))
-		b.WriteString(prettyJSON(ev.GetResponsePayload()))
+		b.WriteString(prettyJSON(ev.GetResponsePayload(), jsonWidth, jsonTruncate))
 	}
 
 	content := b.String()
@@ -379,11 +407,12 @@ func (m Model) renderReplayResult() string {
 
 		if r.ResponseJSON != "" {
 			b.WriteString(labelStyle.Render("Response: "))
-			b.WriteString(prettyJSON(r.ResponseJSON))
+			b.WriteString(prettyJSON(r.ResponseJSON, m.width-6, jsonWrap))
 		}
 	}
 
 	allLines := strings.Split(b.String(), "\n")
+	m.replayResult.totalLines = len(allLines)
 
 	// Visible area: border(2) + visible + help(1) = m.height
 	visibleMax := m.height - 2 - 1
@@ -413,7 +442,7 @@ func (m Model) renderReplayResult() string {
 	for range pad {
 		visible = append(visible, "")
 	}
-	visible = append(visible, helpStyle.Render("esc: back  j/k: scroll"))
+	visible = append(visible, helpStyle.Render("q: back  j/k/↑/↓: scroll"))
 
 	return borderStyle.Width(m.width - 2).Render(strings.Join(visible, "\n"))
 }
@@ -487,6 +516,15 @@ func (m Model) openEditor(ev *scopev1.CallEvent) tea.Cmd {
 		}
 		return EditorFinishedMsg{Payload: string(edited), Event: ev}
 	})
+}
+
+func isReplayEvent(ev *scopev1.CallEvent) bool {
+	if md := ev.GetRequestMetadata(); md != nil {
+		if vals := md[replay.ReplayMetadataKey]; vals != nil {
+			return len(vals.GetValues()) > 0
+		}
+	}
+	return false
 }
 
 func metadataFromEvent(ev *scopev1.CallEvent) map[string][]string {
@@ -576,13 +614,46 @@ func friendlyError(target string, err error) string {
 	return fmt.Sprintf("Error: %v", err)
 }
 
-func prettyJSON(s string) string {
+const maxJSONLines = 6
+
+func prettyJSON(s string, maxWidth int, mode jsonDisplayMode) string {
 	var buf bytes.Buffer
 	if err := json.Indent(&buf, []byte(s), "", "  "); err != nil {
 		return s
 	}
-	return buf.String()
+	lines := strings.Split(buf.String(), "\n")
+	if maxWidth > 0 {
+		switch mode {
+		case jsonTruncate:
+			for i, line := range lines {
+				if len(line) > maxWidth {
+					lines[i] = line[:maxWidth-3] + "..."
+				}
+			}
+			if len(lines) > maxJSONLines {
+				lines = append(lines[:maxJSONLines-1], "  ...")
+			}
+		case jsonWrap:
+			var wrapped []string
+			for _, line := range lines {
+				for len(line) > maxWidth {
+					wrapped = append(wrapped, line[:maxWidth])
+					line = line[maxWidth:]
+				}
+				wrapped = append(wrapped, line)
+			}
+			lines = wrapped
+		}
+	}
+	return strings.Join(lines, "\n")
 }
+
+type jsonDisplayMode int
+
+const (
+	jsonTruncate jsonDisplayMode = iota
+	jsonWrap
+)
 
 func truncate(s string, max int) string {
 	if len(s) <= max {

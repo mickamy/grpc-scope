@@ -191,7 +191,7 @@ func TestModel_Update_ReplayResultMsg(t *testing.T) {
 	model := updated.(tui.Model)
 
 	view := model.View()
-	if !strings.Contains(view, "esc: back") {
+	if !strings.Contains(view, "q: back") {
 		t.Error("expected replay result view")
 	}
 	if !strings.Contains(view, "OK") {
@@ -200,8 +200,8 @@ func TestModel_Update_ReplayResultMsg(t *testing.T) {
 	if !strings.Contains(view, `"message": "Hello!"`) {
 		t.Errorf("expected response JSON in replay result, got:\n%s", view)
 	}
-	if !strings.Contains(view, "esc") {
-		t.Error("expected esc hint in replay result view")
+	if !strings.Contains(view, "q: back") {
+		t.Error("expected back hint in replay result view")
 	}
 }
 
@@ -249,7 +249,7 @@ func TestModel_Update_ReplayResultMsg_NonZeroStatus(t *testing.T) {
 	}
 }
 
-func TestModel_Update_EscFromReplayView(t *testing.T) {
+func TestModel_Update_BackFromReplayView(t *testing.T) {
 	t.Parallel()
 
 	m := setupModelWithEvent("localhost:8080")
@@ -261,16 +261,16 @@ func TestModel_Update_EscFromReplayView(t *testing.T) {
 	})
 	m = updated.(tui.Model)
 
-	// Press esc to go back
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	// Press q to go back
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	m = updated.(tui.Model)
 
 	view := m.View()
-	if strings.Contains(view, "esc: back") {
-		t.Error("expected to return to list view after esc")
+	if strings.Contains(view, "q: back") {
+		t.Error("expected to return to list view after q")
 	}
 	if !strings.Contains(view, "gRPC Traffic") {
-		t.Errorf("expected list view after esc, got:\n%s", view)
+		t.Errorf("expected list view after q, got:\n%s", view)
 	}
 }
 
@@ -326,8 +326,35 @@ func TestModel_Update_CursorIgnoredInReplayView(t *testing.T) {
 	m = updated.(tui.Model)
 
 	view := m.View()
-	if !strings.Contains(view, "esc: back") {
+	if !strings.Contains(view, "q: back") {
 		t.Error("expected to stay in replay view")
+	}
+}
+
+func TestModel_Update_ArrowDownInReplayView(t *testing.T) {
+	t.Parallel()
+
+	m := setupModelWithEvent("localhost:8080")
+
+	// Enter replay view
+	updated, _ := m.Update(tui.ReplayResultMsg{
+		Result: &replay.Result{StatusCode: 0, Duration: time.Millisecond, ResponseJSON: `{"ok":true}`},
+		Method: "/test.v1.Test/Get",
+	})
+	m = updated.(tui.Model)
+
+	// Render once to set totalLines
+	_ = m.View()
+
+	// Press arrow-down many times — should never leave replay view
+	for range 50 {
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+		m = updated.(tui.Model)
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "q: back") {
+		t.Error("expected to stay in replay view after arrow-down at bottom")
 	}
 }
 
