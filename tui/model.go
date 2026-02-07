@@ -448,7 +448,7 @@ func (m Model) renderReplayResult() string {
 }
 
 func (m Model) renderHelp() string {
-	parts := []string{"q: quit", "j/k: navigate"}
+	parts := []string{"q: quit", "j/k/↑/↓: navigate"}
 	if m.appTarget != "" && len(m.events) > 0 {
 		parts = append(parts, "r: replay", "e: edit & replay")
 	}
