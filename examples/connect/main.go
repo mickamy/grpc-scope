@@ -7,6 +7,9 @@ import (
 	"net/http"
 
 	"connectrpc.com/connect"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
+
 	"github.com/mickamy/grpc-scope/cinterceptor"
 
 	greeterv1 "github.com/mickamy/grpc-scope/examples/connect/gen/greeter/v1"
@@ -38,7 +41,7 @@ func main() {
 	mux.Handle(path, handler)
 
 	fmt.Println("Connect server listening on :8080 (scope on :9090)")
-	if err := http.ListenAndServe(":8080", mux); err != nil {
+	if err := http.ListenAndServe(":8080", h2c.NewHandler(mux, &http2.Server{})); err != nil {
 		log.Fatal(err)
 	}
 }
